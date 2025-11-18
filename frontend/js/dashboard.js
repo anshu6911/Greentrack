@@ -464,5 +464,23 @@ const initDashboard = async () => {
     }
 };
 
-document.addEventListener('DOMContentLoaded', initDashboard);
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof initTheme === 'function') {
+        initTheme();
+    }
+
+    const dashToggle = document.getElementById('theme-toggle-dashboard');
+    if (dashToggle) {
+        dashToggle.addEventListener('click', () => {
+            const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('greentrack-theme', next);
+            if (typeof applyTheme === 'function') {
+                applyTheme(next);
+            }
+        });
+    }
+
+    initDashboard();
+});
 

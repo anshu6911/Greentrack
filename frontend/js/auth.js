@@ -11,6 +11,23 @@ const showAlert = (message, type = 'error') => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    // apply theme from main.js helpers if available
+    if (typeof initTheme === 'function') {
+        initTheme();
+    }
+
+    const authToggle = document.getElementById('theme-toggle-auth');
+    if (authToggle) {
+        authToggle.addEventListener('click', () => {
+            const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('greentrack-theme', next);
+            if (typeof applyTheme === 'function') {
+                applyTheme(next);
+            }
+        });
+    }
+
     const tabButtons = document.querySelectorAll('.tab-button');
     const forms = {
         'login-form': document.getElementById('login-form'),

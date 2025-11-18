@@ -72,7 +72,7 @@
 - [ ] Analytics cards update (completed tasks, verified reports, volunteers count)
 - [ ] Seed images load from `uploads/seed/` and new uploads appear in `uploads/`
 
-### NOTES
+### Notes
 - Set `SECRET_KEY` in production and consider moving SQLite file outside the repo.
 - `seed_db.py` clears existing tables before re-populating; run only in dev/demo environments.
 - The Flask server enables CORS with credentials, so the standalone frontend and backend can still communicate if deployed separately.

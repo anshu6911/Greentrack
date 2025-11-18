@@ -82,3 +82,4 @@
 ### photos is uploadin in volunteer dasboard 
 ### added reward system git add .
 ### repair submit report in citizen view...
+### admin pannel fixed

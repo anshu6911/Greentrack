@@ -100,6 +100,89 @@ const renderReports = (reports = []) => {
         .join('');
 };
 
+const renderRewards = (data) => {
+    const container = document.getElementById('citizen-rewards');
+    if (!container) return;
+
+    if (!data) {
+        container.innerHTML = '<p>Rewards data is not available right now.</p>';
+        return;
+    }
+
+    const completedCount = data.valid_reports || 0;
+    const rewards = Array.isArray(data.rewards) ? data.rewards : [];
+    const nextTier = data.next_tier || null;
+
+    const parts = [];
+
+    parts.push(`<p><strong>Completed reports:</strong> ${completedCount}</p>`);
+
+    if (nextTier) {
+        const remaining = Math.max(0, nextTier.threshold - completedCount);
+        parts.push(
+            `<p style="color:var(--muted);">` +
+            (remaining > 0
+                ? `Only ${remaining} more completed photo reports to unlock a reward from <strong>${escapeHtml(nextTier.brand)}</strong>.`
+                : `You are eligible for the next reward tier from <strong>${escapeHtml(nextTier.brand)}</strong>.`)
+            + `</p>`
+        );
+    } else {
+        parts.push('<p style="color:var(--muted);">You have unlocked all available reward tiers for now. Thank you for keeping your city clean!</p>');
+    }
+
+    if (!rewards.length) {
+        parts.push('<p>No rewards unlocked yet. Complete photo-backed cleanup reports to earn discount codes from Swiggy, Zomato, Blinkit, Ola, Uber, KFC, Domino\'s and more.</p>');
+    } else {
+        const items = rewards
+            .map(r => {
+                const brand = r.brand || '';
+                const initial = brand.charAt(0).toUpperCase() || '?';
+                const brandColors = {
+                    'Swiggy': '#F26D21',
+                    'Zomato': '#E23744',
+                    'Blinkit': '#2AC74F',
+                    'Ola': '#000000',
+                    'Uber': '#000000',
+                    'KFC': '#E4002B',
+                    "Domino's": '#006491'
+                };
+                const bg = brandColors[brand] || '#2563eb';
+
+                return `
+                <li class="hotspot-item" style="display:flex;flex-direction:column;gap:0.35rem;align-items:flex-start;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;width:100%;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                            <div style="width:36px;height:36px;border-radius:999px;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0;">
+                                ${escapeHtml(initial)}
+                            </div>
+                            <div>
+                                <div style="font-weight:600;">${escapeHtml(brand)}</div>
+                                <div style="font-size:0.85rem;color:var(--muted);">${escapeHtml(r.description || '')}</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary reward-reveal" data-code="${escapeHtml(r.code)}">Tap to reveal</button>
+                    </div>
+                </li>
+            `;
+            })
+            .join('');
+        parts.push(`<ul class="hotspot-list">${items}</ul>`);
+    }
+
+    container.innerHTML = parts.join('');
+
+    const buttons = container.querySelectorAll('.reward-reveal');
+    buttons.forEach(btn => {
+        const code = btn.getAttribute('data-code') || '';
+        btn.addEventListener('click', () => {
+            if (!code) return;
+            btn.textContent = code;
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-primary');
+        }, { once: true });
+    });
+};
+
 const renderTaskList = (tasks = [], selector, type = 'available') => {
     const container = document.querySelector(selector);
     if (!container) return;
@@ -399,6 +482,7 @@ const setupReportForm = () => {
 };
 
 const loadCitizenData = () => fetchWithAuth('/api/reports/my').then(renderReports).catch(() => {});
+const loadRewards = () => fetchWithAuth('/api/rewards').then(renderRewards).catch(() => {});
 const loadAvailableTasks = () => fetchWithAuth(`/api/tasks/available?q=${encodeURIComponent(document.getElementById('available-search')?.value || '')}`).then(data => renderTaskList(data, '#available-tasks', 'available')).catch(() => {});
 const loadMyTasks = () => fetchWithAuth('/api/tasks/my').then(data => renderTaskList(data, '#my-tasks', 'mine')).catch(() => {});
 const loadPendingReports = () => fetchWithAuth('/api/reports/pending').then(renderPendingReports).catch(() => {});
@@ -411,6 +495,7 @@ const loadAnalytics = () => fetchWithAuth('/api/stats').then(renderAnalytics).ca
 
 const refreshDataByRole = () => {
     loadCitizenData();
+    loadRewards();
     if (['volunteer', 'admin'].includes(state.user.role)) {
         loadAvailableTasks();
         loadMyTasks();

@@ -17,6 +17,58 @@ CORS(app, supports_credentials=True)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
+REWARD_TIERS = [
+    {
+        'tier': 1,
+        'threshold': 3,
+        'brand': 'Swiggy',
+        'code': 'SWIGGY-50-OFF',
+        'description': 'Flat 50 off on your next food order.'
+    },
+    {
+        'tier': 2,
+        'threshold': 5,
+        'brand': 'Zomato',
+        'code': 'ZOMATO-75-OFF',
+        'description': 'Save up to 75 on food delivery.'
+    },
+    {
+        'tier': 3,
+        'threshold': 10,
+        'brand': 'Blinkit',
+        'code': 'BLINKIT-10PCT',
+        'description': '10% off on your next grocery order.'
+    },
+    {
+        'tier': 4,
+        'threshold': 15,
+        'brand': 'Ola',
+        'code': 'OLA-RIDE-100',
+        'description': 'Get up to 100 off on cab rides.'
+    },
+    {
+        'tier': 5,
+        'threshold': 20,
+        'brand': 'Uber',
+        'code': 'UBER-GREEN-75',
+        'description': 'Ride savings for helping keep the city clean.'
+    },
+    {
+        'tier': 6,
+        'threshold': 30,
+        'brand': 'KFC',
+        'code': 'KFC-MEAL-75',
+        'description': 'Discount on your next KFC meal.'
+    },
+    {
+        'tier': 7,
+        'threshold': 40,
+        'brand': "Domino's",
+        'code': 'DOMINOS-PIZZA-100',
+        'description': 'Flat 100 off on pizza orders.'
+    }
+]
+
 
 def sanitize_text(value):
     if value is None:
@@ -106,9 +158,46 @@ def init_db():
             FOREIGN KEY (volunteer_id) REFERENCES users(id)
         )
     ''')
+
+    # Rewards table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rewards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            tier INTEGER NOT NULL,
+            brand TEXT NOT NULL,
+            code TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
     
     conn.commit()
     conn.close()
+
+
+def award_rewards_for_citizen(citizen_id, conn):
+    """Award rewards to a citizen based on their non-invalid reports."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) as count
+        FROM reports
+        WHERE citizen_id = ?
+          AND status = 'completed'
+    ''', (citizen_id,))
+    row = cursor.fetchone()
+    valid_count = row['count'] if row else 0
+
+    cursor.execute('SELECT tier FROM rewards WHERE user_id = ?', (citizen_id,))
+    awarded_tiers = {r['tier'] for r in cursor.fetchall()}
+
+    for tier in REWARD_TIERS:
+        if valid_count >= tier['threshold'] and tier['tier'] not in awarded_tiers:
+            cursor.execute('''
+                INSERT INTO rewards (user_id, tier, brand, code, description)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (citizen_id, tier['tier'], tier['brand'], tier['code'], tier['description']))
 
 def require_login(f):
     """Decorator to require login"""
@@ -215,6 +304,59 @@ def get_current_user():
         'name': session['user_name'],
         'email': session['user_email'],
         'role': session['user_role']
+    })
+
+
+@app.route('/api/rewards', methods=['GET'])
+@require_login
+def get_rewards():
+    conn = get_db()
+    award_rewards_for_citizen(session['user_id'], conn)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT COUNT(*) as count
+        FROM reports
+        WHERE citizen_id = ?
+          AND status = 'completed'
+    ''', (session['user_id'],))
+    row = cursor.fetchone()
+    valid_count = row['count'] if row else 0
+
+    cursor.execute('''
+        SELECT tier, brand, code, description, created_at
+        FROM rewards
+        WHERE user_id = ?
+        ORDER BY tier ASC
+    ''', (session['user_id'],))
+    rewards = []
+    awarded_tiers = set()
+    for r in cursor.fetchall():
+        rewards.append({
+            'tier': r['tier'],
+            'brand': r['brand'],
+            'code': r['code'],
+            'description': r['description'],
+            'created_at': r['created_at']
+        })
+        awarded_tiers.add(r['tier'])
+
+    next_tier = None
+    for tier in REWARD_TIERS:
+        if tier['tier'] not in awarded_tiers:
+            next_tier = {
+                'tier': tier['tier'],
+                'threshold': tier['threshold'],
+                'brand': tier['brand']
+            }
+            break
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'valid_reports': valid_count,
+        'rewards': rewards,
+        'next_tier': next_tier
     })
 
 # Reports routes
@@ -338,6 +480,12 @@ def validate_report(report_id):
     
     conn = get_db()
     cursor = conn.cursor()
+
+    cursor.execute('SELECT citizen_id FROM reports WHERE id = ?', (report_id,))
+    report = cursor.fetchone()
+    if not report:
+        conn.close()
+        return jsonify({'error': 'Report not found'}), 404
     
     new_status = 'valid' if is_valid else 'invalid'
     cursor.execute('''
@@ -346,18 +494,14 @@ def validate_report(report_id):
         WHERE id = ?
     ''', (new_status, notes, report_id))
     
+    cursor.execute('''
+        UPDATE tasks
+        SET status = 'pending', assigned_volunteer_id = NULL
+        WHERE report_id = ?
+    ''', (report_id,))
+
     if is_valid:
-        cursor.execute('''
-            UPDATE tasks
-            SET status = 'pending', assigned_volunteer_id = NULL
-            WHERE report_id = ?
-        ''', (report_id,))
-    else:
-        cursor.execute('''
-            UPDATE tasks
-            SET status = 'pending', assigned_volunteer_id = NULL
-            WHERE report_id = ?
-        ''', (report_id,))
+        award_rewards_for_citizen(report['citizen_id'], conn)
     
     conn.commit()
     conn.close()
@@ -423,7 +567,7 @@ def get_available_tasks():
         FROM reports r
         JOIN tasks t ON r.id = t.report_id
         JOIN users u ON r.citizen_id = u.id
-        WHERE r.status IN ('valid')
+        WHERE r.status IN ('pending', 'valid')
         AND t.status = 'pending'
         AND t.assigned_volunteer_id IS NULL
     '''

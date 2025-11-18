@@ -77,9 +77,9 @@
 - `seed_db.py` clears existing tables before re-populating; run only in dev/demo environments.
 - The Flask server enables CORS with credentials, so the standalone frontend and backend can still communicate if deployed separately.
 
-### dark mode added
-### dark mode added on dasboard
-### photos is uploadin in volunteer dasboard 
-### added reward system git add .
-### repair submit report in citizen view...
-### admin pannel fixed
+- dark mode added
+- dark mode added on dasboard
+- photos is uploadin in volunteer dasboard 
+- added reward system git add .
+- repair submit report in citizen view...
+- admin pannel fixed

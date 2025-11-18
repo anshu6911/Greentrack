@@ -78,3 +78,4 @@
 - The Flask server enables CORS with credentials, so the standalone frontend and backend can still communicate if deployed separately.
 
 ### dark mode added
+### dark mode added on dasboard
